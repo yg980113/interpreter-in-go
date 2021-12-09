@@ -27,7 +27,6 @@ func TestNextToken(t *testing.T) {
 	10 == 10;
 	10 != 9;
 	`
-	//fmt.Println(input)
 
 	tests := []struct {
 		expectedType    token.TokenType
@@ -107,8 +106,6 @@ func TestNextToken(t *testing.T) {
 		{token.EOF, ""},
 	}
 
-	10 == 10
-	10 != 9
 	l := New(input)
 
 	for i, tt := range tests {

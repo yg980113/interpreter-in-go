@@ -1,7 +1,6 @@
 package lexer
 
 import (
-	"fmt"
 	"monkey/token"
 )
 
@@ -13,15 +12,12 @@ type Lexer struct {
 }
 
 func New(input string) *Lexer {
-	//fmt.Println("New(input): ", input)
 	l := &Lexer{input: input}
 	l.readChar()
 	return l
 }
 
 func (l *Lexer) readChar() {
-	//fmt.Println("readchar readPosition: ", l.ch, "len(l.input) : ", len(l.input))
-
 	if l.readPosition >= len(l.input) {
 		l.ch = 0
 	} else {
@@ -117,8 +113,8 @@ func (l *Lexer) readIdentifier() string {
 		l.readChar()
 	}
 
-	fmt.Println("l.input : ", l.input)
-	fmt.Println("l.input[poistion:l.position] : ", l.input[position:l.position])
+	//fmt.Println("l.input : ", l.input)
+	//fmt.Println("l.input[poistion:l.position] : ", l.input[position:l.position])
 
 	return l.input[position:l.position]
 }
