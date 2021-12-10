@@ -43,6 +43,7 @@ var precedences = map[token.TokenType]int{
 	token.MINUS:    SUM,
 	token.SLASH:    PRODUCT,
 	token.ASTERISK: PRODUCT,
+	token.LPAREN:   CALL,
 }
 
 func New(l *lexer.Lexer) *Parser {
@@ -60,6 +61,7 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerPrefix(token.FALSE, p.parseBoolean)
 	p.registerPrefix(token.LPAREN, p.parseGroupedExpression)
 	p.registerPrefix(token.IF, p.parseIfExpression)
+	p.registerPrefix(token.FUNCTION, p.parseFunctionLiteral)
 
 	p.infixParseFns = make(map[token.TokenType]infixParseFn)
 	p.registerInfix(token.PLUS, p.parseInfixExpression)
@@ -70,6 +72,7 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerInfix(token.NOT_EQ, p.parseInfixExpression)
 	p.registerInfix(token.LT, p.parseInfixExpression)
 	p.registerInfix(token.GT, p.parseInfixExpression)
+	p.registerInfix(token.LPAREN, p.parseCallExpression)
 
 	// curToken과 peekToken을 세팅한다.
 	p.nextToken()
@@ -189,14 +192,15 @@ func (p *Parser) parseExpressionStatement() *ast.ExpressionStatement {
 }
 
 func (p *Parser) parseExpression(precedence int) ast.Expression {
-	prefix := p.prefixParseFns[p.curToken.Type] // b
+	prefix := p.prefixParseFns[p.curToken.Type] // 현재 토큰 타입에 맞는 적절한 함수 포인터를 설정한다.
 	if prefix == nil {
 		p.noPrefixParseFnError(p.curToken.Type)
 		return nil
 	}
 
-	leftExp := prefix()
+	leftExp := prefix() // 현재 토큰 타입에 맞는 prefix 함수를 호출하여 left Expression을 설정한다.
 
+	// 다음 토큰이 우선순위가 더높다면 infix parsing을 수행한다.
 	for !p.peekTokenIs(token.SEMICOLON) && precedence < p.peekPrecedence() {
 		infix := p.infixParseFns[p.peekToken.Type]
 		if infix == nil {
@@ -205,7 +209,6 @@ func (p *Parser) parseExpression(precedence int) ast.Expression {
 
 		p.nextToken()
 		leftExp = infix(leftExp)
-		//fmt.Println("leftExp : ", leftExp)
 	}
 
 	return leftExp
@@ -293,7 +296,6 @@ func (p *Parser) parseGroupedExpression() ast.Expression {
 func (p *Parser) parseIfExpression() ast.Expression {
 	expression := &ast.IfExpression{Token: p.curToken}
 
-	//p.nextToken()
 	if !p.expectPeek(token.LPAREN) {
 		return nil
 	}
@@ -339,4 +341,89 @@ func (p *Parser) parseBlockStatement() *ast.BlockStatement {
 	}
 
 	return block
+}
+
+func (p *Parser) parseFunctionLiteral() ast.Expression {
+	lit := &ast.FunctionLiteral{Token: p.curToken}
+
+	fmt.Println("parseFunctionLiteral()")
+
+	if !p.expectPeek(token.LPAREN) {
+		return nil
+	}
+
+	// Function Parameter 파싱
+	lit.Parameters = p.parseFunctionParameters()
+
+	if !p.expectPeek(token.LBRACE) {
+		return nil
+	}
+
+	// 함수 Block 파싱
+	lit.Body = p.parseBlockStatement()
+
+	return lit
+}
+
+func (p *Parser) parseFunctionParameters() []*ast.Identifier {
+	identifiers := []*ast.Identifier{} // 빈 slice를 만든다.
+
+	// 다음 토큰이 ')'인지 조사. 즉, 함수 파라미터가 비어있다.
+	if p.peekTokenIs(token.RPAREN) {
+		p.nextToken()
+		return identifiers
+	}
+
+	p.nextToken() // 첫번째 파라미터
+	ident := &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+	identifiers = append(identifiers, ident) // 슬라이스에 파라미터를 하나씩 추가한다.
+
+	// 여러 파라미터가 들어올 수 있음
+	for p.peekTokenIs(token.COMMA) {
+		p.nextToken() // COMMA
+		p.nextToken() // 다음 파라미터에 해당하는 토큰
+
+		ident := &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+		identifiers = append(identifiers, ident)
+	}
+
+	// 다음 토큰이 '}'인지 조사
+	if !p.expectPeek(token.RPAREN) {
+		return nil
+	}
+
+	return identifiers
+}
+
+func (p *Parser) parseCallExpression(function ast.Expression) ast.Expression {
+	exp := &ast.CallExpression{Token: p.curToken, Function: function}
+	exp.Arguments = p.parseCallArguments()
+	return exp
+}
+
+func (p *Parser) parseCallArguments() []ast.Expression {
+	args := []ast.Expression{}
+
+	// argument가 없는 함수를 Call한 경우
+	if p.peekTokenIs(token.RPAREN) {
+		p.nextToken()
+		return args
+	}
+
+	// 첫번째 Argument 파싱(Expression)
+	p.nextToken()
+	args = append(args, p.parseExpression(LOWEST))
+
+	// 2 ~ N Argument
+	for p.peekTokenIs(token.COMMA) {
+		p.nextToken()
+		p.nextToken()
+		args = append(args, p.parseExpression(LOWEST))
+	}
+
+	if !p.expectPeek(token.RPAREN) {
+		return nil
+	}
+
+	return args
 }
