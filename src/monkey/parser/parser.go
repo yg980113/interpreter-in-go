@@ -348,7 +348,7 @@ func (p *Parser) parseBlockStatement() *ast.BlockStatement {
 func (p *Parser) parseFunctionLiteral() ast.Expression {
 	lit := &ast.FunctionLiteral{Token: p.curToken}
 
-	fmt.Println("parseFunctionLiteral()")
+	//fmt.Println("parseFunctionLiteral()")
 
 	if !p.expectPeek(token.LPAREN) {
 		return nil
