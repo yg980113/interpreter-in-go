@@ -16,7 +16,8 @@ func Eval(node ast.Node) object.Object {
 
 	switch node := node.(type) {
 	case *ast.Program: // program statement root를 만난 경우
-		return evalStatements(node.Statements)
+		return evalProgram(node) // <- 좀 더 연구해 보기 머리가 안돌아간다.
+		//return evalStatements(node.Statements) // 이 함수를 쓰면 node.statements가 재사용되는건가..?
 
 	case *ast.ExpressionStatement: // expression 표현식을 만난 경우
 		return Eval(node.Expression)
@@ -40,7 +41,12 @@ func Eval(node ast.Node) object.Object {
 		return evalIfExpression(node)
 
 	case *ast.BlockStatement:
-		return evalStatements(node.Statements)
+		//return evalStatements(node.Statements)
+		return evalBlockStatement(node)
+
+	case *ast.ReturnStatement:
+		val := Eval(node.ReturnValue)
+		return &object.ReturnValue{Value: val}
 	}
 
 	return nil
@@ -52,6 +58,12 @@ func evalStatements(stmts []ast.Statement) object.Object {
 	// statement 단위로 평가를 한다.
 	for _, statement := range stmts {
 		result = Eval(statement)
+
+		//fmt.Println(result)
+
+		if returnValue, ok := result.(*object.ReturnValue); ok {
+			return returnValue.Value
+		}
 	}
 
 	return result
@@ -167,4 +179,36 @@ func isTruthy(obj object.Object) bool {
 	default: // ex) 숫자의 경우..? 0도 여기 속하나..?
 		return true
 	}
+}
+
+func evalProgram(program *ast.Program) object.Object {
+	var result object.Object
+
+	// statement  단위로 평가
+	for _, statement := range program.Statements {
+		result = Eval(statement)
+
+		// return 인경우 return value
+		if returnValue, ok := result.(*object.ReturnValue); ok {
+			return returnValue.Value
+		}
+	}
+
+	return result
+}
+
+func evalBlockStatement(block *ast.BlockStatement) object.Object {
+	var result object.Object
+
+	// block을 만나면 block의 문장을 평가한다.
+	for _, statement := range block.Statements {
+		result = Eval(statement)
+
+		// 리턴 타입이면 리턴 값을 리턴한다.
+		if result != nil && result.Type() == object.RETURN_VALUE_OBJ {
+			return result
+		}
+	}
+
+	return result
 }
