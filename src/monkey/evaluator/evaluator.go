@@ -1,6 +1,7 @@
 package evaluator
 
 import (
+	"fmt"
 	"monkey/ast"
 	"monkey/object"
 )
@@ -12,12 +13,9 @@ var (
 )
 
 func Eval(node ast.Node) object.Object {
-	//fmt.Println(node.String())
-
 	switch node := node.(type) {
 	case *ast.Program: // program statement root를 만난 경우
 		return evalProgram(node) // <- 좀 더 연구해 보기 머리가 안돌아간다.
-		//return evalStatements(node.Statements) // 이 함수를 쓰면 node.statements가 재사용되는건가..?
 
 	case *ast.ExpressionStatement: // expression 표현식을 만난 경우
 		return Eval(node.Expression)
@@ -30,22 +28,35 @@ func Eval(node ast.Node) object.Object {
 
 	case *ast.PrefixExpression:
 		right := Eval(node.Right)
+		if isError(right) {
+			return right
+		}
 		return evalPrefixExpression(node.Operator, right)
 
 	case *ast.InfixExpression:
 		left := Eval(node.Left)
+		if isError(left) { // 에러를 만난 경우 재귀 함수를 반복하지않고 바로 리턴
+			return left
+		}
+
 		right := Eval(node.Right)
+		if isError(right) {
+			return right
+		}
+
 		return evalInfixExpression(node.Operator, left, right)
 
 	case *ast.IfExpression:
 		return evalIfExpression(node)
 
 	case *ast.BlockStatement:
-		//return evalStatements(node.Statements)
 		return evalBlockStatement(node)
 
 	case *ast.ReturnStatement:
 		val := Eval(node.ReturnValue)
+		if isError(val) {
+			return val
+		}
 		return &object.ReturnValue{Value: val}
 	}
 
@@ -59,10 +70,8 @@ func evalStatements(stmts []ast.Statement) object.Object {
 	for _, statement := range stmts {
 		result = Eval(statement)
 
-		//fmt.Println(result)
-
 		if returnValue, ok := result.(*object.ReturnValue); ok {
-			return returnValue.Value
+			return returnValue.Value // return value를 리턴해줘서 block statements의 경우 바깥쪽도 모두 검사하게됨.. ㅇㅋ 이해함
 		}
 	}
 
@@ -85,7 +94,7 @@ func evalPrefixExpression(operator string, right object.Object) object.Object {
 	case "-":
 		return evalMinusPrefixOperatorExpression(right)
 	default:
-		return NULL
+		return newError("unknown operator: %s%s", operator, right.Type())
 	}
 }
 
@@ -104,7 +113,7 @@ func evalBangOperatorExpression(right object.Object) object.Object {
 
 func evalMinusPrefixOperatorExpression(right object.Object) object.Object {
 	if right.Type() != object.INTEGER_OBJ {
-		return NULL
+		return newError("unknown operator: -%s", right.Type())
 	}
 
 	value := right.(*object.Integer).Value
@@ -122,8 +131,12 @@ func evalInfixExpression(
 		return nativeBoolToBooleanObject(left == right)
 	case operator == "!=":
 		return nativeBoolToBooleanObject(left != right)
+	case left.Type() != right.Type():
+		return newError("type mismatch: %s %s %s",
+			left.Type(), operator, right.Type())
 	default:
-		return NULL
+		return newError("unknown operator: %s %s %s",
+			left.Type(), operator, right.Type())
 	}
 }
 
@@ -152,12 +165,16 @@ func evalIntegerInfixExpression(
 	case "!=":
 		return nativeBoolToBooleanObject(leftVal != rightVal)
 	default:
-		return NULL
+		return newError("unknown operator: %s %s %s",
+			left.Type(), operator, right.Type())
 	}
 }
 
 func evalIfExpression(ie *ast.IfExpression) object.Object {
 	condition := Eval(ie.Condition)
+	if isError(condition) {
+		return condition
+	}
 
 	if isTruthy(condition) {
 		return Eval(ie.Consequence)
@@ -188,9 +205,11 @@ func evalProgram(program *ast.Program) object.Object {
 	for _, statement := range program.Statements {
 		result = Eval(statement)
 
-		// return 인경우 return value
-		if returnValue, ok := result.(*object.ReturnValue); ok {
-			return returnValue.Value
+		switch result := result.(type) {
+		case *object.ReturnValue:
+			return result.Value
+		case *object.Error:
+			return result
 		}
 	}
 
@@ -205,10 +224,25 @@ func evalBlockStatement(block *ast.BlockStatement) object.Object {
 		result = Eval(statement)
 
 		// 리턴 타입이면 리턴 값을 리턴한다.
-		if result != nil && result.Type() == object.RETURN_VALUE_OBJ {
-			return result
+		if result != nil {
+			rt := result.Type()
+			// return or error object인 경우
+			if rt == object.RETURN_VALUE_OBJ || rt == object.ERROR_OBJ {
+				return result
+			}
 		}
 	}
 
 	return result
+}
+
+func newError(format string, a ...interface{}) *object.Error {
+	return &object.Error{Message: fmt.Sprintf(format, a...)}
+}
+
+func isError(obj object.Object) bool {
+	if obj != nil {
+		return obj.Type() == object.ERROR_OBJ
+	}
+	return false
 }
