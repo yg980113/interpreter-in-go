@@ -85,6 +85,8 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 		if len(args) == 1 && isError(args[0]) {
 			return args[0]
 		}
+
+		return applyFunction(function, args)
 	}
 
 	return nil
@@ -301,4 +303,40 @@ func evalExpressions(
 	}
 
 	return result
+}
+
+func applyFunction(fn object.Object, args []object.Object) object.Object {
+	function, ok := fn.(*object.Function)
+
+	// function이 아닌 경우
+	if !ok {
+		return newError("not a function: %s", fn.Type())
+	}
+
+	extendedEnv := extendFunctionEnv(function, args)
+	evaluted := Eval(function.Body, extendedEnv)
+	return unwrapReturnValue(evaluted)
+}
+
+func extendFunctionEnv(
+	fn *object.Function,
+	args []object.Object,
+) *object.Environment {
+	// 함수 안에서 Argument 변수들 값 설정
+	env := object.NewEnclosedEnvironment(fn.Env)
+
+	for paramIdx, param := range fn.Parameters {
+		env.Set(param.Value, args[paramIdx])
+	}
+
+	return env
+}
+
+func unwrapReturnValue(obj object.Object) object.Object {
+	// object가 ReturnValue일 경우 returnValue의 Value를 리턴해준다.
+	if returnValue, ok := obj.(*object.ReturnValue); ok {
+		return returnValue.Value
+	}
+
+	return obj
 }
